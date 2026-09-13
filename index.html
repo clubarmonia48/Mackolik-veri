@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>İddaa Mobil Analiz</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d1117;color:#eef2f7;font:15px Arial,sans-serif}
+.wrap{max-width:980px;margin:auto;padding:14px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:16px;padding:15px;margin:12px 0}
+h1{font-size:24px;margin:4px 0 3px}.muted{color:#9da7b3}
+button{width:100%;padding:13px;border:0;border-radius:10px;background:#238636;color:#fff;font-weight:800;font-size:15px;cursor:pointer}
+select{width:100%;padding:13px;border-radius:10px;border:1px solid #3a4350;background:#0d1117;color:#fff}
+.match{padding:12px;border:1px solid #30363d;border-radius:12px;margin:8px 0;cursor:pointer}
+.match:hover{border-color:#58a6ff}.match.active{border-color:#238636;background:#17251b}
+.teams{font-size:17px;font-weight:800}.meta{font-size:12px;color:#9da7b3;margin-top:4px}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.tag{display:inline-block;padding:5px 8px;border-radius:12px;background:#263b2b;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.market{border:1px solid #30363d;border-radius:12px;padding:11px;margin:8px 0}
+.market h4{margin:0 0 8px;font-size:14px;color:#58a6ff}
+.row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #242b33}
+.row:first-of-type{border-top:0}.value{font-weight:800;color:#2ea043}
+.score{font-size:42px;font-weight:900;margin:4px 0}
+.pick{font-size:19px;font-weight:900}
+.hidden{display:none}
+
+/* Form Rozetleri */
+.form-badge{display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:6px;font-weight:800;font-size:12px;margin-right:4px}
+.bg-win{background:#238636;color:#fff}
+.bg-draw{background:#d97706;color:#fff}
+.bg-loss{background:#da3633;color:#fff}
+
+@media(max-width:600px){.grid{grid-template-columns:1fr}.score{font-size:36px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>⚽ İddaa Mobil Analiz</h1>
+<p class="muted">Otomatik Oran & Analiz Sistemi</p>
+
+<div class="card">
+  <button onclick="loadMatches()">🔄 Maçları ve oranları otomatik getir</button>
+  <div id="status" class="muted" style="margin-top:9px">Hazır.</div>
+</div>
+
+<div class="card">
+  <h3>📅 Maç Seç</h3>
+  <select id="matchSelect" onchange="selectMatch(this.value)">
+    <option value="">Önce maçları getir</option>
+  </select>
+  <div id="selectedMatch" class="muted" style="margin-top:10px">Maç seçilmedi.</div>
+</div>
+
+<div id="analysisArea" class="hidden">
+  <div class="card">
+    <h3>📈 Takım Form Analizi (Son 5 Maç)</h3>
+    <div id="formGuide">Yükleniyor...</div>
+  </div>
+
+  <div class="card">
+    <h3>📊 Otomatik Analiz & Öne Çıkanlar</h3>
+    <div id="summary"></div>
+  </div>
+
+  <div class="card">
+    <h3>💰 Bütün Bahisler ve Oranlar</h3>
+    <div id="markets"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>📋 Güncel Maçlar</h3>
+  <div id="matches" class="muted">Henüz veri alınmadı.</div>
+</div>
+</div>
+
+<script>
+let matches=[], selected=null;
+
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const num=v=>{let n=Number(v);return Number.isFinite(n)?n:null};
+
+async function loadMatches(){
+ const s=document.getElementById('status');
+ s.textContent='Maçlar ve oranlar alınıyor...';
+ try{
+   const r=await fetch('/api/matches',{cache:'no-store'});
+   const j=await r.json();
+   if(!j.ok) throw Error(j.error||'Veri alınamadı');
+   matches=Array.isArray(j.matches)?j.matches:[];
+   renderMatches();
+   const sel=document.getElementById('matchSelect');
+   sel.innerHTML='<option value="">Maç seçiniz</option>'+
+     matches.map((m,i)=>`<option value="${i}">${esc(m.home||'-')} - ${esc(m.away||'-')}</option>`).join('');
+   s.textContent=`${matches.length} maç alındı • ${new Date().toLocaleTimeString('tr-TR')}`;
+ }catch(e){
+   s.textContent='Hata: '+e.message;
+ }
+}
+
+function renderMatches(){
+ const box=document.getElementById('matches');
+ if(!matches.length){box.textContent='Maç bulunamadı.';return}
+ box.innerHTML=matches.map((m,i)=>`
+ <div class="match ${selected===m?'active':''}" onclick="selectMatch(${i})">
+   <div class="teams">${esc(m.home||'-')} — ${esc(m.away||'-')}</div>
+   <div class="meta">${esc(m.league||'')} ${esc(m.time||'')}</div>
+   <div class="tags">
+     <span class="tag">MS1: ${esc(m.ms1??'-')}</span>
+     <span class="tag">MSX: ${esc(m.msx??'-')}</span>
+     <span class="tag">MS2: ${esc(m.ms2??'-')}</span>
+     <span class="tag">Üst 2.5: ${esc(m.over25??'-')}</span>
+   </div>
+ </div>`).join('');
+}
+
+async function selectMatch(index){
+ if(index==='' || index===null || index===undefined)return;
+ selected=matches[Number(index)];
+ document.getElementById('matchSelect').value=String(index);
+ document.getElementById('analysisArea').classList.remove('hidden');
+ document.getElementById('selectedMatch').innerHTML=
+   `<b>${esc(selected.home||'-')} — ${esc(selected.away||'-')}</b><br><span class="muted">${esc(selected.league||'')} ${esc(selected.time||'')}</span>`;
+ 
+ fetchFormGuide(selected);
+ renderAll(selected);
+ renderMatches();
+}
+
+async function fetchFormGuide(m){
+ const box = document.getElementById('formGuide');
+ box.innerHTML = '<span class="muted">Form verileri alınıyor...</span>';
+ try{
+   const url = m.url ? `/api/match-details?url=${encodeURIComponent(m.url)}` : `/api/match-details?url=default`;
+   const r = await fetch(url);
+   const j = await r.json();
+   
+   const renderBadges = arr => arr.map(x=>{
+     let cls = x==='G'?'bg-win':(x==='B'?'bg-draw':'bg-loss');
+     return `<span class="form-badge ${cls}">${x}</span>`;
+   }).join('');
+
+   box.innerHTML = `
+     <div style="margin-bottom:10px">
+       <b>${esc(m.home)} (Ev) :</b> ${renderBadges(j.home_form)}
+     </div>
+     <div>
+       <b>${esc(m.away)} (Dep) :</b> ${renderBadges(j.away_form)}
+     </div>`;
+ }catch(e){
+   box.innerHTML = '<span class="muted">Form verisi yüklenemedi.</span>';
+ }
+}
+
+function calcPct(m, key){
+ const m1=num(m.ms1), mx=num(m.msx), m2=num(m.ms2);
+ if(!m1 || !mx || !m2) return '-';
+ const sum = (1/m1) + (1/mx) + (1/m2);
+ if(key==='MS1') return ((1/m1)/sum*100).toFixed(1);
+ if(key==='MSX') return ((1/mx)/sum*100).toFixed(1);
+ if(key==='MS2') return ((1/m2)/sum*100).toFixed(1);
+ return '-';
+}
+
+function topPick(m){
+ const p1=parseFloat(calcPct(m,'MS1'))||0;
+ const px=parseFloat(calcPct(m,'MSX'))||0;
+ const p2=parseFloat(calcPct(m,'MS2'))||0;
+ if(p1>=px && p1>=p2) return ['MS1', p1];
+ if(p2>=p1 && p2>=px) return ['MS2', p2];
+ return ['MSX', px];
+}
+
+function deriveMarkets(m){
+ const m1=num(m.ms1), mx=num(m.msx), m2=num(m.ms2), o25=num(m.over25);
+ const res = {};
+
+ // Çifte Şans
+ if(m1 && mx) res.cs1x = (1 / ((1/m1) + (1/mx)) * 1.12).toFixed(2);
+ if(m2 && mx) res.csx2 = (1 / ((1/m2) + (1/mx)) * 1.12).toFixed(2);
+ if(m1 && m2) res.cs12 = (1 / ((1/m1) + (1/m2)) * 1.12).toFixed(2);
+
+ // Maç Alt / Üst (1.5, 2.5, 3.5)
+ if(o25) {
+   res.over25 = o25.toFixed(2);
+   res.under25 = (1 / (1.12 - (1/o25))).toFixed(2);
+   if(num(res.under25) < 1.05 || !Number.isFinite(num(res.under25))) res.under25 = "1.75";
+
+   if(o25 <= 1.75) {
+     res.over15 = "1.20"; res.under15 = "3.40";
+     res.over35 = "2.40"; res.under35 = "1.40";
+   } else {
+     res.over15 = "1.30"; res.under15 = "2.80";
+     res.over35 = "3.10"; res.under35 = "1.25";
+   }
+ } else {
+   res.over25 = "1.85"; res.under25 = "1.85";
+   res.over15 = "1.25"; res.under15 = "3.00";
+   res.over35 = "2.75"; res.under35 = "1.32";
+ }
+
+ // KG Var / Yok
+ if(o25) {
+   if(o25 <= 1.70) { res.bttsYes = "1.65"; res.bttsNo = "2.10"; }
+   else if(o25 <= 1.95) { res.bttsYes = "1.80"; res.bttsNo = "1.90"; }
+   else { res.bttsYes = "1.95"; res.bttsNo = "1.75"; }
+ } else {
+   res.bttsYes = "1.80"; res.bttsNo = "1.80";
+ }
+
+ // İY Sonucu
+ if(m1 && mx && m2) {
+   res.ht1 = (m1 * 1.65).toFixed(2);
+   res.htX = (mx * 0.55 < 1.9 ? "2.05" : (mx * 0.55).toFixed(2));
+   res.ht2 = (m2 * 1.65).toFixed(2);
+
+   // İY / MS
+   res.htFt11 = (m1 * 2.25).toFixed(2);
+   res.htFtX1 = (m1 * 3.80).toFixed(2);
+   res.htFt21 = (m1 * 18.00).toFixed(2);
+
+   res.htFt1X = (mx * 3.40).toFixed(2);
+   res.htFtXX = (mx * 1.45).toFixed(2);
+   res.htFt2X = (mx * 3.40).toFixed(2);
+
+   res.htFt12 = (m2 * 18.00).toFixed(2);
+   res.htFtX2 = (m2 * 3.80).toFixed(2);
+   res.htFt22 = (m2 * 2.25).toFixed(2);
+ }
+
+ // İY Alt / Üst (0.5 ve 1.5)
+ if(o25) {
+   if(o25 <= 1.75) {
+     res.htOver05 = "1.32"; res.htUnder05 = "2.60";
+     res.htOver15 = "2.45"; res.htUnder15 = "1.38";
+   } else {
+     res.htOver05 = "1.42"; res.htUnder05 = "2.30";
+     res.htOver15 = "2.85"; res.htUnder15 = "1.28";
+   }
+ } else {
+   res.htOver05 = "1.35"; res.htUnder05 = "2.40";
+   res.htOver15 = "2.60"; res.htUnder15 = "1.33";
+ }
+
+ return res;
+}
+
+function renderAll(m){
+ renderSummary(m); 
+ renderMarkets(m);
+}
+
+function renderSummary(m){
+ const pick=topPick(m);
+ const score=pick[1]?Math.round(Math.min(98,45+pick[1]*.55)):0;
+ const p1=calcPct(m,'MS1'), px=calcPct(m,'MSX'), p2=calcPct(m,'MS2');
+ const d = deriveMarkets(m);
+ 
+ document.getElementById('summary').innerHTML=`
+   <div class="score">${score}/100</div>
+   <div class="pick">🎯 Öne çıkan: ${esc(pick[0])}</div>
+   <p>MS1: ${p1}% • MSX: ${px}% • MS2: ${p2}%</p>
+   <div class="grid">
+     <div class="market"><h4>⚽ KG Var / Yok</h4>
+       ${line('KG Var', d.bttsYes)}
+       ${line('KG Yok', d.bttsNo)}
+     </div>
+     <div class="market"><h4>🔢 Üst/Alt 2.5</h4>
+       ${line('Üst 2.5', d.over25)}
+       ${line('Alt 2.5', d.under25)}
+     </div>
+   </div>`;
+}
+
+function line(k,v){
+ return `<div class="row"><span>${esc(k)}</span><span class="value">${esc(v??'-')}</span></div>`;
+}
+
+function renderMarkets(m){
+ const d = deriveMarkets(m);
+
+ const sections=[
+  ['🏁 Maç Sonucu & Çifte Şans',[
+    ['MS 1', m.ms1], ['MS X', m.msx], ['MS 2', m.ms2],
+    ['ÇŞ 1X', d.cs1x], ['ÇŞ X2', d.csx2], ['ÇŞ 12', d.cs12]
+  ]],
+  ['⚽ Karşılıklı Gol (KG)',[
+    ['KG Var', d.bttsYes],
+    ['KG Yok', d.bttsNo]
+  ]],
+  ['🔢 Maç Alt / Üst Seçenekleri',[
+    ['Üst 1.5', d.over15], ['Alt 1.5', d.under15],
+    ['Üst 2.5', d.over25], ['Alt 2.5', d.under25],
+    ['Üst 3.5', d.over35], ['Alt 3.5', d.under35]
+  ]],
+  ['⏱️ İlk Yarı Sonucu (İY)',[
+    ['İY 1', d.ht1], ['İY X', d.htX], ['İY 2', d.ht2]
+  ]],
+  ['⏱️ İlk Yarı Alt / Üst',[
+    ['İY Üst 0.5', d.htOver05], ['İY Alt 0.5', d.htUnder05],
+    ['İY Üst 1.5', d.htOver15], ['İY Alt 1.5', d.htUnder15]
+  ]],
+  ['🔄 İlk Yarı / Maç Sonucu (İY/MS)',[
+    ['1/1', d.htFt11], ['X/1', d.htFtX1], ['2/1', d.htFt21],
+    ['1/X', d.htFt1X], ['X/X', d.htFtXX], ['2/X', d.htFt2X],
+    ['1/2', d.htFt12], ['X/2', d.htFtX2], ['2/2', d.htFt22]
+  ]]
+ ];
+
+ document.getElementById('markets').innerHTML=sections.map(([title,rows])=>{
+   return `<div class="market"><h4>${title}</h4>${rows.map(x=>line(x[0],x[1])).join('')}</div>`;
+ }).join('');
+}
+</script>
+</body>
+</html>
+
