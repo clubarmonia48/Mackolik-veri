@@ -147,19 +147,22 @@ async function selectMatch(index){
 
 async function fetchFormGuide(m){
  const box=document.getElementById('formGuide');
- box.innerHTML='<span class="small">Form verileri alınıyor...</span>';
+ box.innerHTML='<span class="small">Form ve detaylı oran verileri alınıyor...</span>';
  try{
   const url=m.url?`/api/match-details?url=${encodeURIComponent(m.url)}`:'/api/match-details?url=default';
   const r=await fetch(url),j=await r.json(); if(!j.ok)throw Error(j.error||'Form alınamadı');
   const badges=arr=>(Array.isArray(arr)?arr:[]).map(x=>`<span class="form-badge ${x==='G'?'bg-win':x==='B'?'bg-draw':'bg-loss'}">${x}</span>`).join('');
   if (j.markets && typeof j.markets === 'object') {
     selected.markets = Object.assign({}, selected.markets || {}, j.markets);
+    if(j.markets.ms1) selected.ms1 = j.markets.ms1;
+    if(j.markets.msx) selected.msx = j.markets.msx;
+    if(j.markets.ms2) selected.ms2 = j.markets.ms2;
     renderAll(selected);
     renderMatches();
   }
   box.innerHTML=`<div style="margin-bottom:9px"><b>${esc(m.home)} (Ev):</b> ${badges(j.home_form)}</div>
                  <div><b>${esc(m.away)} (Dep):</b> ${badges(j.away_form)}</div>`;
- }catch(e){box.innerHTML='<span class="small">Form verisi yüklenemedi.</span>'}
+ }catch(e){box.innerHTML='<span class="small">Form/detay verisi yüklenemedi.</span>'}
 }
 
 function calcPct(m,key){
@@ -269,7 +272,6 @@ function renderMarkets(m){
 }
 
 function renderAll(m){renderTop(m);renderCategoryPanels(m);renderSummary(m);renderMarkets(m)}
-
 </script>
-
-</body></html>
+</body>
+</html>
