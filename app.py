@@ -35,82 +35,56 @@ def find_match_url(node):
     return None
 
 
-def labelled_odds(cells):
-    """Geliştirilmiş etiket ve regex tarama fonksiyonu"""
-    aliases = {
-        "ms1": [r"\bms\s*1\b", r"\b1\b"],
-        "msx": [r"\bms\s*x\b", r"\bx\b"],
-        "ms2": [r"\bms\s*2\b", r"\b2\b"],
-        "cs1x": [r"1-x", r"1x"],
-        "csx2": [r"x-2", r"x2"],
-        "cs12": [r"1-2", r"12"],
-        "over15": [r"ü(?:st)?\s*1[.,]5", r"1[.,]5\s*ü"],
-        "under15": [r"a(?:lt)?\s*1[.,]5", r"1[.,]5\s*a"],
-        "over25": [r"ü(?:st)?\s*2[.,]5", r"2[.,]5\s*ü"],
-        "under25": [r"a(?:lt)?\s*2[.,]5", r"2[.,]5\s*a"],
-        "over35": [r"ü(?:st)?\s*3[.,]5", r"3[.,]5\s*ü"],
-        "under35": [r"a(?:lt)?\s*3[.,]5", r"3[.,]5\s*a"],
-        "bttsYes": [r"kg\s*v", r"var", r"kg\s*var"],
-        "bttsNo": [r"kg\s*y", r"yok", r"kg\s*yok"],
-    }
-    result = {}
-    for cell in cells:
-        txt = clean(cell.get_text(" ", strip=True))
-        vals = odds_from_text(txt)
-        if not vals:
-            continue
-        for key, patterns in aliases.items():
-            if key in result:
-                continue
-            if any(re.search(p, txt, re.I) for p in patterns):
-                result[key] = vals[-1]
-    return result
-
-
 def extract_market_values(raw):
-    """Metin üzerinden genişletilmiş market çekici"""
+    """Maç detay sayfasındaki tüm market alanlarını hassas şekilde ayrıştırır."""
     text = clean(raw).replace("\u00a0", " ")
-
-    def after_heading(patterns, count, window=300):
-        for pat in patterns:
-            m = re.search(pat, text, re.I)
-            if not m:
-                continue
-            tail = text[m.end():m.end()+window]
-            vals = odds_from_text(tail)
-            if len(vals) >= count:
-                return vals[:count]
-        return []
-
     out = {}
 
-    v = after_heading([r"Maç\s*Sonucu(?:\s*\(MS\))?", r"\bMS\b"], 3)
+    def get_numbers_after(pattern, count=2, window=250):
+        m = re.search(pattern, text, re.I)
+        if not m:
+            return []
+        tail = text[m.end():m.end()+window]
+        return odds_from_text(tail)[:count]
+
+    # Maç Sonucu
+    v = get_numbers_after(r"Maç\s*Sonucu", 3)
     if len(v) == 3:
         out.update(ms1=v[0], msx=v[1], ms2=v[2])
 
-    v = after_heading([r"Çifte\s*Şans", r"\bÇŞ\b"], 3)
+    # Çifte Şans
+    v = get_numbers_after(r"Çifte\s*Şans", 3)
     if len(v) == 3:
         out.update(cs1x=v[0], csx2=v[1], cs12=v[2])
 
-    for label, key1, key2 in [
+    # Alt / Üst Marketleri (Maçkolik'te varsayılan düzen: Alt, Üst)
+    for pat, k_under, k_over in [
         (r"0[,.]5\s*Alt\s*/?\s*Üst", "htUnder05", "htOver05"),
-        (r"1[,.]5\s*Alt\s*/?\s*Üst", "htUnder15", "htOver15"),
+        (r"1[,.]5\s*Alt\s*/?\s*Üst", "under15", "over15"),
         (r"2[,.]5\s*Alt\s*/?\s*Üst", "under25", "over25"),
         (r"3[,.]5\s*Alt\s*/?\s*Üst", "under35", "over35"),
     ]:
-        v = after_heading([label], 2, 200)
+        v = get_numbers_after(pat, 2)
         if len(v) == 2:
-            out[key1], out[key2] = v[0], v[1]
+            out[k_under], out[k_over] = v[0], v[1]
 
-    v = after_heading([r"Karşılıklı\s*Gol", r"KG\s*Var\s*/?\s*Yok", r"\bKG\b"], 2, 200)
+    # İlk Yarı 1.5 Alt/Üst Özel Tespiti
+    v = get_numbers_after(r"İlk\s*Yarı\s*1[,.]5\s*Alt\s*/?\s*Üst", 2)
+    if len(v) == 2:
+        out["htUnder15"], out["htOver15"] = v[0], v[1]
+
+    # Karşılıklı Gol
+    v = get_numbers_after(r"Karşılıklı\s*Gol", 2)
     if len(v) == 2:
         out["bttsYes"], out["bttsNo"] = v[0], v[1]
 
-    v = after_heading([r"İlk\s*Yarı\s*Sonucu", r"\bİY\b"], 3, 220)
+    # İlk Yarı Sonucu
+    v = get_numbers_after(r"İlk\s*Yarı\s*Sonucu", 3)
     if len(v) == 3:
         out["ht1"], out["htX"], out["ht2"] = v[0], v[1], v[2]
 
-    v = after_heading([r"İlk\s*Yarı\s*/\s*Maç\s*Sonucu", r"İY\s*/\s*MS"], 9, 500)
+    # İY / MS
+    v = get_numbers_after(r"İlk\s*Yarı\s*/\s*Maç\s*Sonucu", 9, 450)
     if len(v) >= 9:
         keys = ["htFt11","htFt1X","htFt12","htFtX1","htFtXX","htFtX2","htFt21","htFt2X","htFt22"]
         out.update(dict(zip(keys, v[:9])))
@@ -150,29 +124,21 @@ def parse_archive(soup):
         if not home or not away:
             continue
 
-        row_cells = cells[team_idx + 1:]
         row_after = " ".join(texts[team_idx + 1:])
-        labelled = labelled_odds(row_cells)
         vals = odds_from_text(row_after)
 
-        ms1 = labelled.get("ms1") or (vals[0] if len(vals) > 0 else None)
-        msx = labelled.get("msx") or (vals[1] if len(vals) > 1 else None)
-        ms2 = labelled.get("ms2") or (vals[2] if len(vals) > 2 else None)
+        ms1 = vals[0] if len(vals) > 0 else None
+        msx = vals[1] if len(vals) > 1 else None
+        ms2 = vals[2] if len(vals) > 2 else None
 
-        # Esnek Alt/Üst ve KG yedeklemeleri (fallback)
-        over25 = labelled.get("over25")
-        under25 = labelled.get("under25")
-        if not (over25 and under25) and len(vals) >= 5:
-            pair = vals[3:5] if len(vals) >= 5 else vals[-2:]
-            if len(pair) == 2:
-                try:
-                    a, b = float(pair[0]), float(pair[1])
-                    over25, under25 = (pair if a >= b else [pair[1], pair[0]])
-                except ValueError:
-                    pass
-
-        bttsYes = labelled.get("bttsYes") or (vals[5] if len(vals) > 5 else None)
-        bttsNo = labelled.get("bttsNo") or (vals[6] if len(vals) > 6 else None)
+        over25, under25 = None, None
+        if len(vals) >= 5:
+            pair = vals[3:5]
+            try:
+                a, b = float(pair[0]), float(pair[1])
+                over25, under25 = (pair[0], pair[1]) if a >= b else (pair[1], pair[0])
+            except ValueError:
+                pass
 
         out.append({
             "url": find_match_url(tr),
@@ -185,17 +151,8 @@ def parse_archive(soup):
             "msx": msx,
             "ms2": ms2,
             "markets": {
-                "cs1x": labelled.get("cs1x"),
-                "csx2": labelled.get("csx2"),
-                "cs12": labelled.get("cs12"),
-                "over15": labelled.get("over15"),
-                "under15": labelled.get("under15"),
                 "over25": over25,
                 "under25": under25,
-                "over35": labelled.get("over35"),
-                "under35": labelled.get("under35"),
-                "bttsYes": bttsYes,
-                "bttsNo": bttsNo,
             },
         })
     return out
@@ -211,34 +168,27 @@ def parse_main_page(soup):
         home, away = [x.strip() for x in txt.split(" - ", 1)]
         if not home or not away or len(home) > 80 or len(away) > 80:
             continue
-        parent = a.parent
-        block = parent if parent else a
-        cells = block.find_all(["td", "th"]) or [block]
-        labelled = labelled_odds(cells)
+        block = a.parent or a
         vals = odds_from_text(clean(block.get_text(" ", strip=True)))
-        ms1 = labelled.get("ms1") or (vals[0] if len(vals) > 0 else None)
-        msx = labelled.get("msx") or (vals[1] if len(vals) > 1 else None)
-        ms2 = labelled.get("ms2") or (vals[2] if len(vals) > 2 else None)
-        over25 = labelled.get("over25")
-        under25 = labelled.get("under25")
-        if not (over25 and under25) and len(vals) >= 5:
+        
+        ms1 = vals[0] if len(vals) > 0 else None
+        msx = vals[1] if len(vals) > 1 else None
+        ms2 = vals[2] if len(vals) > 2 else None
+        
+        over25, under25 = None, None
+        if len(vals) >= 5:
             pair = vals[-2:]
             try:
-                aa, bb = float(pair[0]), float(pair[1])
-                over25, under25 = (pair if aa >= bb else [pair[1], pair[0]])
+                a, b = float(pair[0]), float(pair[1])
+                over25, under25 = (pair[0], pair[1]) if a >= b else (pair[1], pair[0])
             except ValueError:
                 pass
+
         out.append({
             "url": ("https://www.mackolik.com" + href) if href.startswith("/") else href,
             "home": home, "away": away, "league": "", "time": "",
             "ms1": ms1, "msx": msx, "ms2": ms2,
-            "markets": {
-                "cs1x": labelled.get("cs1x"), "csx2": labelled.get("csx2"), "cs12": labelled.get("cs12"),
-                "over15": labelled.get("over15"), "under15": labelled.get("under15"),
-                "over25": over25, "under25": under25,
-                "over35": labelled.get("over35"), "under35": labelled.get("under35"),
-                "bttsYes": labelled.get("bttsYes"), "bttsNo": labelled.get("bttsNo"),
-            },
+            "markets": {"over25": over25, "under25": under25},
         })
     return out
 
