@@ -142,16 +142,19 @@ async function selectMatch(index){
  document.getElementById('analysisArea').classList.remove('hidden');
  document.getElementById('selectedMatch').innerHTML=
  `<b>${esc(selected.home||'-')} — ${esc(selected.away||'-')}</b><br><span class="small">${esc(selected.league||'')} ${esc(selected.time||'')}</span>`;
- fetchFormGuide(selected); renderAll(selected); renderMatches();
+ renderAll(selected);
+ renderMatches();
+ fetchFormGuide(selected);
 }
 
 async function fetchFormGuide(m){
  const box=document.getElementById('formGuide');
- box.innerHTML='<span class="small">Form ve detaylı oran verileri alınıyor...</span>';
+ box.innerHTML='<span class="small">Detay oranları ve form verisi çekiliyor...</span>';
  try{
   const url=m.url?`/api/match-details?url=${encodeURIComponent(m.url)}`:'/api/match-details?url=default';
   const r=await fetch(url),j=await r.json(); if(!j.ok)throw Error(j.error||'Form alınamadı');
   const badges=arr=>(Array.isArray(arr)?arr:[]).map(x=>`<span class="form-badge ${x==='G'?'bg-win':x==='B'?'bg-draw':'bg-loss'}">${x}</span>`).join('');
+  
   if (j.markets && typeof j.markets === 'object') {
     selected.markets = Object.assign({}, selected.markets || {}, j.markets);
     if(j.markets.ms1) selected.ms1 = j.markets.ms1;
@@ -160,6 +163,7 @@ async function fetchFormGuide(m){
     renderAll(selected);
     renderMatches();
   }
+  
   box.innerHTML=`<div style="margin-bottom:9px"><b>${esc(m.home)} (Ev):</b> ${badges(j.home_form)}</div>
                  <div><b>${esc(m.away)} (Dep):</b> ${badges(j.away_form)}</div>`;
  }catch(e){box.innerHTML='<span class="small">Form/detay verisi yüklenemedi.</span>'}
