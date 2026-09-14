@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>İddaa Mobil Analiz</title>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#07111c;color:#eef5ff;font:14px Arial,sans-serif}
+.wrap{max-width:1100px;margin:auto;padding:14px}
+.hero{background:linear-gradient(135deg,#0b1a2b,#07111c);border:1px solid #164b78;border-radius:18px;padding:18px;margin-bottom:12px}
+.hero h1{margin:0;font-size:25px}.hero p{margin:5px 0 0;color:#9db2c9}
+.card{background:#0b1724;border:1px solid #17486f;border-radius:16px;padding:14px;margin:12px 0}
+button{width:100%;padding:14px;border:0;border-radius:11px;background:#168f57;color:#fff;font-weight:900;font-size:15px;cursor:pointer}
+select{width:100%;padding:13px;border-radius:10px;border:1px solid #28516f;background:#08121d;color:#fff}
+.match{padding:12px;border:1px solid #20445f;border-radius:12px;margin:8px 0;cursor:pointer;background:#0b1622}
+.match:hover{border-color:#48a8ff}.match.active{border-color:#19a463;background:#0d251d}
+.teams{font-size:16px;font-weight:900}.meta{font-size:12px;color:#91a8bd;margin-top:4px}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.tag{padding:5px 8px;border-radius:12px;background:#122c40;font-size:12px}
+.hidden{display:none}
+.topgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
+.oddbox{border:1px solid #27617f;border-radius:10px;overflow:hidden;background:#07131f;text-align:center}
+.oddtitle{padding:8px 4px;font-weight:900}.oddval{padding:9px;font-size:19px;font-weight:900}
+.c-green .oddtitle{background:#13924d}.c-blue .oddtitle{background:#1878c9}.c-red .oddtitle{background:#c92f3a}
+.c-purple .oddtitle{background:#7130bd}.c-cyan .oddtitle{background:#087f9b}.c-orange .oddtitle{background:#bb6912}
+.dashgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.panel{background:#081522;border:1px solid #1a537a;border-radius:14px;padding:13px}
+.panel h3{margin:0 0 10px;color:#5ab1ff;font-size:16px}
+.analysis{border-top:1px solid #1a3348;margin-top:10px;padding-top:9px;color:#d9e7f3;line-height:1.45}
+.analysis strong{color:#31df85}.recommend{margin-top:9px;background:#09633d;border-radius:10px;padding:9px;font-weight:900}
+.warn{background:#3a2a08;border:1px solid #765c15;color:#ffe5a1}
+.row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #193043}
+.row:first-of-type{border-top:0}.value{font-weight:900;color:#35d86d}
+.section-title{font-size:18px;margin:3px 0 12px}
+.score{font-size:42px;font-weight:900}.pick{font-size:18px;font-weight:900}
+.form-badge{display:inline-block;width:27px;height:27px;line-height:27px;text-align:center;border-radius:7px;font-weight:900;font-size:12px;margin-right:4px}
+.bg-win{background:#168f57}.bg-draw{background:#b36a0a}.bg-loss{background:#c92f3a}
+.statusline{color:#91a8bd;margin-top:8px}
+.small{font-size:12px;color:#91a8bd}
+@media(max-width:800px){.topgrid{grid-template-columns:repeat(3,1fr)}.dashgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.wrap{padding:9px}.topgrid{grid-template-columns:repeat(2,1fr)}.dashgrid{grid-template-columns:1fr}.hero h1{font-size:21px}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+ <div class="hero">
+  <h1>⚽ Maç Analizi ve Bahis Önerileri</h1>
+  <p>Kaynak oranları doğru kategorilerine yerleştirilir ve her kategori için ayrı analiz yapılır.</p>
+ </div>
+
+ <div class="card">
+  <button onclick="loadMatches()">🔄 Maçları ve oranları otomatik getir</button>
+  <div id="status" class="statusline">Hazır.</div>
+ </div>
+
+ <div class="card">
+  <h3>📅 Maç Seç</h3>
+  <select id="matchSelect" onchange="selectMatch(this.value)"><option value="">Önce maçları getir</option></select>
+  <div id="selectedMatch" class="statusline">Maç seçilmedi.</div>
+ </div>
+
+ <div id="analysisArea" class="hidden">
+  <div class="card">
+   <h2 class="section-title">🏟️ Seçilen Maç — Kaynak Oranları</h2>
+   <div id="topOdds" class="topgrid"></div>
+  </div>
+
+  <div class="card">
+   <h2 class="section-title">📈 Takım Form Analizi (Son 5 Maç)</h2>
+   <div id="formGuide">Yükleniyor...</div>
+  </div>
+
+  <div class="card">
+   <h2 class="section-title">📊 Maç Sonucu Analizi</h2>
+   <div id="mainAnalysis"></div>
+  </div>
+
+  <div class="card">
+   <h2 class="section-title">🔎 Bütün Bahis Kategorileri Analizi</h2>
+   <div id="categoryGrid" class="dashgrid"></div>
+  </div>
+
+  <div class="card">
+   <h2 class="section-title">🎯 Genel Analiz Özeti</h2>
+   <div id="summary" class="dashgrid"></div>
+  </div>
+
+  <div class="card">
+   <h2 class="section-title">💰 Bütün Bahisler ve Oranlar</h2>
+   <div id="markets" class="dashgrid"></div>
+   <div class="small" style="margin-top:10px">Not: Kaynaktan gelmeyen oranlar uydurulmaz; “—” olarak gösterilir.</div>
+  </div>
+ </div>
+
+ <div class="card">
+  <h3>📋 Güncel Maçlar</h3>
+  <div id="matches" class="statusline">Henüz veri alınmadı.</div>
+ </div>
+</div>
+
+<script>
+let matches=[], selected=null;
+
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const num=v=>{let n=Number(v);return Number.isFinite(n)&&n>0?n:null};
+const fmt=v=>v==null||v===''?'—':v;
+
+async function loadMatches(){
+ const s=document.getElementById('status'); s.textContent='Maçlar ve oranlar alınıyor...';
+ try{
+   const r=await fetch('/api/matches',{cache:'no-store'}), j=await r.json();
+   if(!j.ok) throw Error(j.error||'Veri alınamadı');
+   matches=Array.isArray(j.matches)?j.matches:[];
+   renderMatches();
+   const sel=document.getElementById('matchSelect');
+   sel.innerHTML='<option value="">Maç seçiniz</option>'+
+     matches.map((m,i)=>`<option value="${i}">${esc(m.home||'-')} - ${esc(m.away||'-')}</option>`).join('');
+   s.textContent=`${matches.length} maç alındı • ${new Date().toLocaleTimeString('tr-TR')}`;
+ }catch(e){s.textContent='Hata: '+e.message}
+}
+
+function renderMatches(){
+ const box=document.getElementById('matches');
+ if(!matches.length){box.textContent='Maç bulunamadı.';return}
+ box.innerHTML=matches.map((m,i)=>`
+ <div class="match ${selected===m?'active':''}" onclick="selectMatch(${i})">
+  <div class="teams">${esc(m.home||'-')} — ${esc(m.away||'-')}</div>
+  <div class="meta">${esc(m.league||'')} ${esc(m.time||'')}</div>
+  <div class="tags">
+   <span class="tag">MS1: ${fmt(m.ms1)}</span><span class="tag">MSX: ${fmt(m.msx)}</span>
+   <span class="tag">MS2: ${fmt(m.ms2)}</span>
+   <span class="tag">Üst 2.5: ${fmt(m.markets?.over25)}</span>
+  </div>
+ </div>`).join('');
+}
+
+async function selectMatch(index){
+ if(index===''||index==null)return;
+ selected=matches[Number(index)];
+ document.getElementById('matchSelect').value=String(index);
+ document.getElementById('analysisArea').classList.remove('hidden');
+ document.getElementById('selectedMatch').innerHTML=
+ `<b>${esc(selected.home||'-')} — ${esc(selected.away||'-')}</b><br><span class="small">${esc(selected.league||'')} ${esc(selected.time||'')}</span>`;
+ fetchFormGuide(selected); renderAll(selected); renderMatches();
+}
+
+async function fetchFormGuide(m){
+ const box=document.getElementById('formGuide');
+ box.innerHTML='<span class="small">Form verileri alınıyor...</span>';
+ try{
+  const url=m.url?`/api/match-details?url=${encodeURIComponent(m.url)}`:'/api/match-details?url=default';
+  const r=await fetch(url),j=await r.json(); if(!j.ok)throw Error(j.error||'Form alınamadı');
+  const badges=arr=>(Array.isArray(arr)?arr:[]).map(x=>`<span class="form-badge ${x==='G'?'bg-win':x==='B'?'bg-draw':'bg-loss'}">${x}</span>`).join('');
+  if (j.markets && typeof j.markets === 'object') {
+    selected.markets = Object.assign({}, selected.markets || {}, j.markets);
+    renderAll(selected);
+    renderMatches();
+  }
+  box.innerHTML=`<div style="margin-bottom:9px"><b>${esc(m.home)} (Ev):</b> ${badges(j.home_form)}</div>
+                 <div><b>${esc(m.away)} (Dep):</b> ${badges(j.away_form)}</div>`;
+ }catch(e){box.innerHTML='<span class="small">Form verisi yüklenemedi.</span>'}
+}
+
+function calcPct(m,key){
+ const vals={MS1:num(m.ms1),MSX:num(m.msx),MS2:num(m.ms2)};
+ const a=vals.MS1,b=vals.MSX,c=vals.MS2;if(!a||!b||!c)return null;
+ const sum=1/a+1/b+1/c;
+ return +(100*(1/vals[key])/sum).toFixed(1);
+}
+function topPick(m){
+ const a=[['MS 1',calcPct(m,'MS1'),m.ms1],['MS X',calcPct(m,'MSX'),m.msx],['MS 2',calcPct(m,'MS2'),m.ms2]].filter(x=>x[1]!=null);
+ return a.sort((x,y)=>y[1]-x[1])[0]||['—',null,null];
+}
+
+function allMarkets(m){
+ const s=m.markets||{};
+ return [
+  {group:'KG',title:'⚽ Karşılıklı Gol (KG)',items:[['KG Var',s.bttsYes],['KG Yok',s.bttsNo]]},
+  {group:'OU',title:'🔢 Maç Alt / Üst',items:[['Üst 1.5',s.over15],['Alt 1.5',s.under15],['Üst 2.5',s.over25],['Alt 2.5',s.under25],['Üst 3.5',s.over35],['Alt 3.5',s.under35]]},
+  {group:'HT',title:'⏱️ İlk Yarı',items:[['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2],['İY Üst 0.5',s.htOver05],['İY Alt 0.5',s.htUnder05],['İY Üst 1.5',s.htOver15],['İY Alt 1.5',s.htUnder15]]},
+  {group:'HTFT',title:'🔄 İY / MS',items:[['1/1',s.htFt11],['X/1',s.htFtX1],['2/1',s.htFt21],['1/X',s.htFt1X],['X/X',s.htFtXX],['2/X',s.htFt2X],['1/2',s.htFt12],['X/2',s.htFtX2],['2/2',s.htFt22]]}
+ ];
+}
+
+function sourceItems(m){
+ const s=m.markets||{};
+ return [
+  ['MS 1',m.ms1],['MS X',m.msx],['MS 2',m.ms2],
+  ['ÇŞ 1X',s.cs1x],['ÇŞ X2',s.csx2],['ÇŞ 12',s.cs12],
+  ['KG Var',s.bttsYes],['KG Yok',s.bttsNo],
+  ['Üst 1.5',s.over15],['Alt 1.5',s.under15],['Üst 2.5',s.over25],['Alt 2.5',s.under25],
+  ['Üst 3.5',s.over35],['Alt 3.5',s.under35],
+  ['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2],
+  ['İY Üst 0.5',s.htOver05],['İY Alt 0.5',s.htUnder05],['İY Üst 1.5',s.htOver15],['İY Alt 1.5',s.htUnder15],
+  ['1/1',s.htFt11],['X/1',s.htFtX1],['2/1',s.htFt21],['1/X',s.htFt1X],['X/X',s.htFtXX],['2/X',s.htFt2X],
+  ['1/2',s.htFt12],['X/2',s.htFtX2],['2/2',s.htFt22]
+ ];
+}
+
+function analyseItems(items){
+ const valid=items.map(x=>[x[0],num(x[1])]).filter(x=>x[1]);
+ if(!valid.length)return {text:'Bu kategori için kaynak oranı alınamadı.',pick:null};
+ valid.sort((a,b)=>a[1]-b[1]);
+ const best=valid[0], second=valid[1];
+ const text=`En düşük oran <b>${esc(best[0])}</b> (${best[1].toFixed(2)}) → bu kategori içindeki piyasa fiyatlamasında en güçlü seçenek. `+
+   (second?`Sonraki seçenek ${esc(second[0])} (${second[1].toFixed(2)}).`:'');
+ return {text,pick:best};
+}
+
+function line(k,v){return `<div class="row"><span>${esc(k)}</span><span class="value">${esc(fmt(v))}</span></div>`}
+
+function renderTop(m){
+ const p=topPick(m);
+ const cards=[
+  ['MS 1',m.ms1,'c-green'],['MS X',m.msx,'c-blue'],['MS 2',m.ms2,'c-red'],
+  ['ÇŞ 1X',m.markets?.cs1x,'c-purple'],['ÇŞ X2',m.markets?.csx2,'c-cyan'],['ÇŞ 12',m.markets?.cs12,'c-orange']
+ ];
+ document.getElementById('topOdds').innerHTML=cards.map(x=>`<div class="oddbox ${x[2]}"><div class="oddtitle">${x[0]}</div><div class="oddval">${fmt(x[1])}</div></div>`).join('');
+ document.getElementById('mainAnalysis').innerHTML=`
+  <div class="score">${p[1]==null?'—':p[1]+'%'}</div>
+  <div class="pick">🎯 Öne çıkan: ${esc(p[0])}</div>
+  <div class="analysis"><strong>Analiz</strong><br>
+  ${p[1]==null?'MS oranları eksik olduğu için ana sonuç yüzdesi hesaplanamadı.':
+  `MS oranlarına göre ${esc(p[0])} en yüksek normalize olasılığa sahip seçenek (${p[1]}%).`}</div>
+  <div class="recommend">⭐ Öneri: ${esc(p[0])} ${p[2]?'('+p[2]+')':''}</div>`;
+}
+
+function renderCategoryPanels(m){
+ const groups=allMarkets(m);
+ const cards=groups.map(g=>{
+  const a=analyseItems(g.items);
+  const rows=g.items.map(x=>line(x[0],x[1])).join('');
+  return `<div class="panel"><h3>${g.title}</h3>${rows}
+   <div class="analysis"><strong>Analiz</strong><br>${a.text}</div>
+   ${a.pick?`<div class="recommend">⭐ Öneri: ${esc(a.pick[0])} (${a.pick[1].toFixed(2)})</div>`:''}
+  </div>`;
+ }).join('');
+ document.getElementById('categoryGrid').innerHTML=cards;
+}
+
+function renderSummary(m){
+ const all=sourceItems(m).map(x=>[x[0],num(x[1])]).filter(x=>x[1]).sort((a,b)=>a[1]-b[1]);
+ const strongest=all.slice(0,5);
+ document.getElementById('summary').innerHTML=`
+  <div class="panel"><h3>🎯 Genel Değerlendirme</h3>
+   <div class="analysis"><strong>Kaynak oranlarına göre en düşük fiyatlanan 5 seçenek:</strong><br>
+   ${strongest.length?strongest.map((x,i)=>`${i+1}. ${esc(x[0])} (${x[1].toFixed(2)})`).join('<br>'):'Henüz kaynak oranı yok.'}
+   </div>
+  </div>
+  <div class="panel"><h3>📊 Güven / Veri Durumu</h3>
+   <div class="analysis">${all.length} kaynak oranı bulundu.<br>
+   <strong>${all.length?'Analiz hazır':'Analiz için veri bekleniyor.'}</strong><br>
+   Oran olmayan kategorilerde tahmin üretilmez.</div>
+  </div>`;
+}
+
+function renderMarkets(m){
+ const s=m.markets||{};
+ const sections=[
+  ['🏁 Maç Sonucu & Çifte Şans',[['MS 1',m.ms1],['MS X',m.msx],['MS 2',m.ms2],['ÇŞ 1X',s.cs1x],['ÇŞ X2',s.csx2],['ÇŞ 12',s.cs12]]],
+  ['⚽ Karşılıklı Gol (KG)',[['KG Var',s.bttsYes],['KG Yok',s.bttsNo]]],
+  ['🔢 Maç Alt / Üst Seçenekleri',[['Üst 1.5',s.over15],['Alt 1.5',s.under15],['Üst 2.5',s.over25],['Alt 2.5',s.under25],['Üst 3.5',s.over35],['Alt 3.5',s.under35]]],
+  ['⏱️ İlk Yarı Sonucu (İY)',[['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2]]],
+  ['⏱️ İlk Yarı Alt / Üst',[['İY Üst 0.5',s.htOver05],['İY Alt 0.5',s.htUnder05],['İY Üst 1.5',s.htOver15],['İY Alt 1.5',s.htUnder15]]],
+  ['🔄 İlk Yarı / Maç Sonucu (İY/MS)',[['1/1',s.htFt11],['X/1',s.htFtX1],['2/1',s.htFt21],['1/X',s.htFt1X],['X/X',s.htFtXX],['2/X',s.htFt2X],['1/2',s.htFt12],['X/2',s.htFtX2],['2/2',s.htFt22]]]
+ ];
+ document.getElementById('markets').innerHTML=sections.map(sec=>`<div class="panel"><h3>${sec[0]}</h3>${sec[1].map(x=>line(x[0],x[1])).join('')}</div>`).join('');
+}
+
+function renderAll(m){renderTop(m);renderCategoryPanels(m);renderSummary(m);renderMarkets(m)}
+
+</script>
+
+</body></html>
