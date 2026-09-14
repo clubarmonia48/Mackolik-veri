@@ -10,11 +10,6 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
 
-SOURCES = [
-    "https://arsiv.mackolik.com/Iddaa-Programi",
-    "https://www.mackolik.com/iddaa",
-]
-
 _cache = {"time": 0, "matches": []}
 CACHE_SECONDS = 60
 
@@ -27,69 +22,16 @@ def odds_from_text(text):
     return [v.replace(",", ".") for v in re.findall(r"\b\d+(?:[.,]\d{2})\b", text)]
 
 
-def find_match_url(node):
+def find_match_id_or_url(node):
     for a in node.find_all("a", href=True):
         href = a.get("href", "")
-        if "/mac/" in href.lower() or "/match/" in href.lower():
-            return ("https://www.mackolik.com" + href) if href.startswith("/") else href
-    return None
-
-
-def extract_market_values(raw):
-    """Maç detay sayfasındaki tüm market alanlarını hassas şekilde ayrıştırır."""
-    text = clean(raw).replace("\u00a0", " ")
-    out = {}
-
-    def get_numbers_after(pattern, count=2, window=250):
-        m = re.search(pattern, text, re.I)
-        if not m:
-            return []
-        tail = text[m.end():m.end()+window]
-        return odds_from_text(tail)[:count]
-
-    # Maç Sonucu
-    v = get_numbers_after(r"Maç\s*Sonucu", 3)
-    if len(v) == 3:
-        out.update(ms1=v[0], msx=v[1], ms2=v[2])
-
-    # Çifte Şans
-    v = get_numbers_after(r"Çifte\s*Şans", 3)
-    if len(v) == 3:
-        out.update(cs1x=v[0], csx2=v[1], cs12=v[2])
-
-    # Alt / Üst Marketleri (Maçkolik'te varsayılan düzen: Alt, Üst)
-    for pat, k_under, k_over in [
-        (r"0[,.]5\s*Alt\s*/?\s*Üst", "htUnder05", "htOver05"),
-        (r"1[,.]5\s*Alt\s*/?\s*Üst", "under15", "over15"),
-        (r"2[,.]5\s*Alt\s*/?\s*Üst", "under25", "over25"),
-        (r"3[,.]5\s*Alt\s*/?\s*Üst", "under35", "over35"),
-    ]:
-        v = get_numbers_after(pat, 2)
-        if len(v) == 2:
-            out[k_under], out[k_over] = v[0], v[1]
-
-    # İlk Yarı 1.5 Alt/Üst Özel Tespiti
-    v = get_numbers_after(r"İlk\s*Yarı\s*1[,.]5\s*Alt\s*/?\s*Üst", 2)
-    if len(v) == 2:
-        out["htUnder15"], out["htOver15"] = v[0], v[1]
-
-    # Karşılıklı Gol
-    v = get_numbers_after(r"Karşılıklı\s*Gol", 2)
-    if len(v) == 2:
-        out["bttsYes"], out["bttsNo"] = v[0], v[1]
-
-    # İlk Yarı Sonucu
-    v = get_numbers_after(r"İlk\s*Yarı\s*Sonucu", 3)
-    if len(v) == 3:
-        out["ht1"], out["htX"], out["ht2"] = v[0], v[1], v[2]
-
-    # İY / MS
-    v = get_numbers_after(r"İlk\s*Yarı\s*/\s*Maç\s*Sonucu", 9, 450)
-    if len(v) >= 9:
-        keys = ["htFt11","htFt1X","htFt12","htFtX1","htFtXX","htFtX2","htFt21","htFt2X","htFt22"]
-        out.update(dict(zip(keys, v[:9])))
-
-    return out
+        # Maç ID'sini URL içerisinden yakala
+        match_id = re.search(r"/(?:mac|match)/[^/]+(?:/)?([a-zA-Z0-9]+)", href)
+        if match_id:
+            m_id = match_id.group(1)
+            full_url = ("https://www.mackolik.com" + href) if href.startswith("/") else href
+            return m_id, full_url
+    return None, None
 
 
 def parse_archive(soup):
@@ -124,6 +66,8 @@ def parse_archive(soup):
         if not home or not away:
             continue
 
+        m_id, m_url = find_match_id_or_url(tr)
+
         row_after = " ".join(texts[team_idx + 1:])
         vals = odds_from_text(row_after)
 
@@ -131,17 +75,13 @@ def parse_archive(soup):
         msx = vals[1] if len(vals) > 1 else None
         ms2 = vals[2] if len(vals) > 2 else None
 
-        over25, under25 = None, None
-        if len(vals) >= 5:
-            pair = vals[3:5]
-            try:
-                a, b = float(pair[0]), float(pair[1])
-                over25, under25 = (pair[0], pair[1]) if a >= b else (pair[1], pair[0])
-            except ValueError:
-                pass
+        # Mackolik bülten yapısında varsayılan 2.5 Alt/Üst sırası: 1. Üst, 2. Alt
+        over25 = vals[3] if len(vals) > 3 else None
+        under25 = vals[4] if len(vals) > 4 else None
 
         out.append({
-            "url": find_match_url(tr),
+            "id": m_id,
+            "url": m_url,
             "home": home,
             "away": away,
             "league": current_league,
@@ -158,61 +98,21 @@ def parse_archive(soup):
     return out
 
 
-def parse_main_page(soup):
-    out = []
-    for a in soup.find_all("a", href=True):
-        txt = clean(a.get_text(" ", strip=True))
-        href = a.get("href", "")
-        if "/mac/" not in href or " - " not in txt:
-            continue
-        home, away = [x.strip() for x in txt.split(" - ", 1)]
-        if not home or not away or len(home) > 80 or len(away) > 80:
-            continue
-        block = a.parent or a
-        vals = odds_from_text(clean(block.get_text(" ", strip=True)))
-        
-        ms1 = vals[0] if len(vals) > 0 else None
-        msx = vals[1] if len(vals) > 1 else None
-        ms2 = vals[2] if len(vals) > 2 else None
-        
-        over25, under25 = None, None
-        if len(vals) >= 5:
-            pair = vals[-2:]
-            try:
-                a, b = float(pair[0]), float(pair[1])
-                over25, under25 = (pair[0], pair[1]) if a >= b else (pair[1], pair[0])
-            except ValueError:
-                pass
-
-        out.append({
-            "url": ("https://www.mackolik.com" + href) if href.startswith("/") else href,
-            "home": home, "away": away, "league": "", "time": "",
-            "ms1": ms1, "msx": msx, "ms2": ms2,
-            "markets": {"over25": over25, "under25": under25},
-        })
-    return out
-
-
 def fetch_matches():
-    last_error = None
     headers = {"User-Agent": UA, "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"}
-    for url in SOURCES:
-        try:
-            r = requests.get(url, headers=headers, timeout=(8, 35))
-            r.raise_for_status()
-            soup = BeautifulSoup(r.text, "html.parser")
-            matches = parse_archive(soup) if "arsiv.mackolik.com" in url else parse_main_page(soup)
-            if matches:
-                clean_matches, seen = [], set()
-                for x in matches:
-                    key = (x["home"].lower(), x["away"].lower(), x["time"])
-                    if key not in seen:
-                        seen.add(key)
-                        clean_matches.append(x)
-                return clean_matches[:200]
-        except Exception as e:
-            last_error = f"{url}: {e}"
-    raise RuntimeError(f"Mackolik verisi alınamadı. Son hata: {last_error}")
+    url = "https://arsiv.mackolik.com/Iddaa-Programi"
+    r = requests.get(url, headers=headers, timeout=(8, 35))
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    matches = parse_archive(soup)
+    
+    clean_matches, seen = [], set()
+    for x in matches:
+        key = (x["home"].lower(), x["away"].lower(), x["time"])
+        if key not in seen:
+            seen.add(key)
+            clean_matches.append(x)
+    return clean_matches[:200]
 
 
 def parse_matches():
@@ -242,27 +142,58 @@ def matches():
 
 @app.get("/api/match-details")
 def match_details():
+    match_id = request.args.get("id")
     url = request.args.get("url")
-    if not url or url == "default":
-        return jsonify(ok=False, error="Maç detay URL'si bulunamadı"), 400
+    
     headers = {"User-Agent": UA, "Accept-Language": "tr-TR,tr;q=0.9"}
-    try:
-        r = requests.get(url, headers=headers, timeout=15)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        raw = soup.get_text(" ", strip=True)
+    markets = {}
+    home_form, away_form = [], []
 
-        scores = [(int(h), int(a)) for h, a in re.findall(r"\b([0-9])\s*-\s*([0-9])\b", raw)]
-        home_form, away_form = [], []
-        for h, a in scores[:5]:
-            home_form.append("G" if h > a else "B" if h == a else "M")
-        for h, a in scores[5:10]:
-            away_form.append("G" if a > h else "B" if a == h else "M")
+    # 1. Maçkolik widget/API servisinden canlı oran verisini çekme
+    if match_id:
+        try:
+            api_url = f"https://widget.mackolik.com/api/iddaa/match/{match_id}/odds"
+            r_api = requests.get(api_url, headers=headers, timeout=10)
+            if r_api.status_code == 200:
+                data = r_api.json()
+                # API içerisindeki market verilerini maple
+                for m in data.get("data", {}).get("markets", []):
+                    m_name = m.get("name", "").lower()
+                    odds = m.get("odds", [])
+                    
+                    if "maç sonucu" in m_name and len(odds) >= 3:
+                        markets.update(ms1=str(odds[0]["value"]), msx=str(odds[1]["value"]), ms2=str(odds[2]["value"]))
+                    elif "çifte şans" in m_name and len(odds) >= 3:
+                        markets.update(cs1x=str(odds[0]["value"]), cs12=str(odds[1]["value"]), csx2=str(odds[2]["value"]))
+                    elif "karşılıklı gol" in m_name and len(odds) >= 2:
+                        markets.update(bttsYes=str(odds[0]["value"]), bttsNo=str(odds[1]["value"]))
+                    elif "2.5 alt/üst" in m_name and len(odds) >= 2:
+                        markets.update(over25=str(odds[0]["value"]), under25=str(odds[1]["value"]))
+                    elif "1.5 alt/üst" in m_name and len(odds) >= 2:
+                        markets.update(over15=str(odds[0]["value"]), under15=str(odds[1]["value"]))
+                    elif "3.5 alt/üst" in m_name and len(odds) >= 2:
+                        markets.update(over35=str(odds[0]["value"]), under35=str(odds[1]["value"]))
+                    elif "ilk yarı sonucu" in m_name and len(odds) >= 3:
+                        markets.update(ht1=str(odds[0]["value"]), htX=str(odds[1]["value"]), ht2=str(odds[2]["value"]))
+        except Exception:
+            pass
 
-        markets = extract_market_values(raw)
-        return jsonify(ok=True, home_form=home_form, away_form=away_form, markets=markets)
-    except Exception as e:
-        return jsonify(ok=False, error=f"Maç detayları alınamadı: {e}"), 502
+    # 2. Form durumunu web sayfasından ayrıştırma
+    if url and url != "default":
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                raw = soup.get_text(" ", strip=True)
+                scores = [(int(h), int(a)) for h, a in re.findall(r"\b([0-9])\s*-\s*([0-9])\b", raw)]
+                for h, a in scores[:5]:
+                    home_form.append("G" if h > a else "B" if h == a else "M")
+                for h, a in scores[5:10]:
+                    away_form.append("G" if a > h else "B" if a == h else "M")
+        except Exception:
+            pass
+
+    return jsonify(ok=True, home_form=home_form, away_form=away_form, markets=markets)
 
 
 if __name__ == "__main__":
