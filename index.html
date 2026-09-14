@@ -28,7 +28,6 @@ select{width:100%;padding:13px;border-radius:10px;border:1px solid #28516f;backg
 .panel h3{margin:0 0 10px;color:#5ab1ff;font-size:16px}
 .analysis{border-top:1px solid #1a3348;margin-top:10px;padding-top:9px;color:#d9e7f3;line-height:1.45}
 .analysis strong{color:#31df85}.recommend{margin-top:9px;background:#09633d;border-radius:10px;padding:9px;font-weight:900}
-.warn{background:#3a2a08;border:1px solid #765c15;color:#ffe5a1}
 .row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #193043}
 .row:first-of-type{border-top:0}.value{font-weight:900;color:#35d86d}
 .section-title{font-size:18px;margin:3px 0 12px}
@@ -89,7 +88,6 @@ select{width:100%;padding:13px;border-radius:10px;border:1px solid #28516f;backg
   <div class="card">
    <h2 class="section-title">💰 Bütün Bahisler ve Oranlar</h2>
    <div id="markets" class="dashgrid"></div>
-   <div class="small" style="margin-top:10px">Not: Kaynaktan gelmeyen oranlar uydurulmaz; “—” olarak gösterilir.</div>
   </div>
  </div>
 
@@ -131,6 +129,7 @@ function renderMatches(){
    <span class="tag">MS1: ${fmt(m.ms1)}</span><span class="tag">MSX: ${fmt(m.msx)}</span>
    <span class="tag">MS2: ${fmt(m.ms2)}</span>
    <span class="tag">Üst 2.5: ${fmt(m.markets?.over25)}</span>
+   <span class="tag">Alt 2.5: ${fmt(m.markets?.under25)}</span>
   </div>
  </div>`).join('');
 }
@@ -149,11 +148,16 @@ async function selectMatch(index){
 
 async function fetchFormGuide(m){
  const box=document.getElementById('formGuide');
- box.innerHTML='<span class="small">Detay oranları ve form verisi çekiliyor...</span>';
+ box.innerHTML='<span class="small">Detay oranları ve canlı API verisi çekiliyor...</span>';
  try{
-  const url=m.url?`/api/match-details?url=${encodeURIComponent(m.url)}`:'/api/match-details?url=default';
-  const r=await fetch(url),j=await r.json(); if(!j.ok)throw Error(j.error||'Form alınamadı');
-  const badges=arr=>(Array.isArray(arr)?arr:[]).map(x=>`<span class="form-badge ${x==='G'?'bg-win':x==='B'?'bg-draw':'bg-loss'}">${x}</span>`).join('');
+  const params=new URLSearchParams();
+  if(m.id) params.append('id', m.id);
+  if(m.url) params.append('url', m.url);
+  
+  const r=await fetch(`/api/match-details?${params.toString()}`), j=await r.json(); 
+  if(!j.ok) throw Error(j.error||'Detay alınamadı');
+  
+  const badges=arr=>(Array.isArray(arr)&&arr.length?arr:[]).map(x=>`<span class="form-badge ${x==='G'?'bg-win':x==='B'?'bg-draw':'bg-loss'}">${x}</span>`).join('')||'Veri yok';
   
   if (j.markets && typeof j.markets === 'object') {
     selected.markets = Object.assign({}, selected.markets || {}, j.markets);
@@ -185,8 +189,7 @@ function allMarkets(m){
  return [
   {group:'KG',title:'⚽ Karşılıklı Gol (KG)',items:[['KG Var',s.bttsYes],['KG Yok',s.bttsNo]]},
   {group:'OU',title:'🔢 Maç Alt / Üst',items:[['Üst 1.5',s.over15],['Alt 1.5',s.under15],['Üst 2.5',s.over25],['Alt 2.5',s.under25],['Üst 3.5',s.over35],['Alt 3.5',s.under35]]},
-  {group:'HT',title:'⏱️ İlk Yarı',items:[['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2],['İY Üst 0.5',s.htOver05],['İY Alt 0.5',s.htUnder05],['İY Üst 1.5',s.htOver15],['İY Alt 1.5',s.htUnder15]]},
-  {group:'HTFT',title:'🔄 İY / MS',items:[['1/1',s.htFt11],['X/1',s.htFtX1],['2/1',s.htFt21],['1/X',s.htFt1X],['X/X',s.htFtXX],['2/X',s.htFt2X],['1/2',s.htFt12],['X/2',s.htFtX2],['2/2',s.htFt22]]}
+  {group:'HT',title:'⏱️ İlk Yarı',items:[['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2]]}
  ];
 }
 
@@ -198,10 +201,7 @@ function sourceItems(m){
   ['KG Var',s.bttsYes],['KG Yok',s.bttsNo],
   ['Üst 1.5',s.over15],['Alt 1.5',s.under15],['Üst 2.5',s.over25],['Alt 2.5',s.under25],
   ['Üst 3.5',s.over35],['Alt 3.5',s.under35],
-  ['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2],
-  ['İY Üst 0.5',s.htOver05],['İY Alt 0.5',s.htUnder05],['İY Üst 1.5',s.htOver15],['İY Alt 1.5',s.htUnder15],
-  ['1/1',s.htFt11],['X/1',s.htFtX1],['2/1',s.htFt21],['1/X',s.htFt1X],['X/X',s.htFtXX],['2/X',s.htFt2X],
-  ['1/2',s.htFt12],['X/2',s.htFtX2],['2/2',s.htFt22]
+  ['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2]
  ];
 }
 
@@ -257,8 +257,7 @@ function renderSummary(m){
   </div>
   <div class="panel"><h3>📊 Güven / Veri Durumu</h3>
    <div class="analysis">${all.length} kaynak oranı bulundu.<br>
-   <strong>${all.length?'Analiz hazır':'Analiz için veri bekleniyor.'}</strong><br>
-   Oran olmayan kategorilerde tahmin üretilmez.</div>
+   <strong>${all.length?'Analiz hazır':'Analiz için veri bekleniyor.'}</strong></div>
   </div>`;
 }
 
@@ -268,9 +267,7 @@ function renderMarkets(m){
   ['🏁 Maç Sonucu & Çifte Şans',[['MS 1',m.ms1],['MS X',m.msx],['MS 2',m.ms2],['ÇŞ 1X',s.cs1x],['ÇŞ X2',s.csx2],['ÇŞ 12',s.cs12]]],
   ['⚽ Karşılıklı Gol (KG)',[['KG Var',s.bttsYes],['KG Yok',s.bttsNo]]],
   ['🔢 Maç Alt / Üst Seçenekleri',[['Üst 1.5',s.over15],['Alt 1.5',s.under15],['Üst 2.5',s.over25],['Alt 2.5',s.under25],['Üst 3.5',s.over35],['Alt 3.5',s.under35]]],
-  ['⏱️ İlk Yarı Sonucu (İY)',[['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2]]],
-  ['⏱️ İlk Yarı Alt / Üst',[['İY Üst 0.5',s.htOver05],['İY Alt 0.5',s.htUnder05],['İY Üst 1.5',s.htOver15],['İY Alt 1.5',s.htUnder15]]],
-  ['🔄 İlk Yarı / Maç Sonucu (İY/MS)',[['1/1',s.htFt11],['X/1',s.htFtX1],['2/1',s.htFt21],['1/X',s.htFt1X],['X/X',s.htFtXX],['2/X',s.htFt2X],['1/2',s.htFt12],['X/2',s.htFtX2],['2/2',s.htFt22]]]
+  ['⏱️ İlk Yarı Sonucu (İY)',[['İY 1',s.ht1],['İY X',s.htX],['İY 2',s.ht2]]]
  ];
  document.getElementById('markets').innerHTML=sections.map(sec=>`<div class="panel"><h3>${sec[0]}</h3>${sec[1].map(x=>line(x[0],x[1])).join('')}</div>`).join('');
 }
