@@ -9,100 +9,94 @@ _cache = {"time": 0, "matches": []}
 CACHE_SECONDS = 60
 
 def fetch_iddaa_bulletin():
-    url = "https://m.iddaa.com/api/v1/bulletin"
+    # Güncel ve çalışan iddaa API adresi
+    url = "https://sports.iddaa.com/api/bulletin/events?type=1"
     headers = {
         "User-Agent": UA,
         "Accept": "application/json, text/plain, */*",
         "Origin": "https://www.iddaa.com",
         "Referer": "https://www.iddaa.com/"
     }
-    r = requests.get(url, headers=headers, timeout=12)
+    
+    r = requests.get(url, headers=headers, timeout=15)
     r.raise_for_status()
     data = r.json()
     
     matches = []
-    events = data.get("data", {}).get("events", []) or data.get("events", [])
+    events = data.get("data", []) if isinstance(data.get("data"), list) else data.get("events", [])
     
     for ev in events:
-        home = ev.get("hn") or ev.get("homeTeamName") or ""
-        away = ev.get("an") or ev.get("awayTeamName") or ""
+        home = ev.get("homeTeamName") or ev.get("hn") or ""
+        away = ev.get("awayTeamName") or ev.get("an") or ""
         if not home or not away:
             continue
             
-        m_id = str(ev.get("id") or ev.get("i") or "")
-        league = ev.get("cn") or ev.get("categoryName") or ""
-        m_time = ev.get("t") or ev.get("time") or ""
+        m_id = str(ev.get("id") or ev.get("eventId") or "")
+        league = ev.get("categoryName") or ev.get("cn") or ""
+        m_time = ev.get("eventDate") or ev.get("t") or ""
         
         markets = {}
         
-        for m in ev.get("m", []) or ev.get("markets", []):
-            m_code = str(m.get("c") or m.get("code") or "")
-            m_name = (m.get("n") or m.get("name") or "").lower()
-            o_list = m.get("o", []) or m.get("odds", [])
+        # Bahis marketlerini işle
+        for m in ev.get("markets", []) or ev.get("m", []):
+            m_name = (m.get("name") or m.get("n") or "").lower()
+            o_list = m.get("odds", []) or m.get("o", [])
             
             # Maç Sonucu (1-X-2)
-            if m_code in ["1", "101"] or "maç sonucu" in m_name:
+            if "maç sonucu" in m_name or m.get("code") == "1":
                 for o in o_list:
-                    n = str(o.get("n", "")).strip().upper()
-                    v = str(o.get("o", ""))
+                    n = str(o.get("name") or o.get("n") or "").strip().upper()
+                    v = str(o.get("odd") or o.get("o") or "")
                     if n == "1": markets["ms1"] = v
                     elif n == "X": markets["msx"] = v
                     elif n == "2": markets["ms2"] = v
-                    
-            # 2.5 Alt / Üst (iddaa standartlarında: 1/Alt, 2/Üst veya açık metin)
-            elif "2.5" in m_name or m_code == "5":
+
+            # 2.5 Alt / Üst (1: Alt, 2: Üst)
+            elif "2.5" in m_name or "alt/üst 2.5" in m_name:
                 for o in o_list:
-                    n = str(o.get("n", "")).strip().lower()
-                    v = str(o.get("o", ""))
-                    if "alt" in n or n == "1" or n == "a":
-                        markets["under25"] = v
-                    elif "üst" in n or "ust" in n or n == "2" or n == "u":
-                        markets["over25"] = v
-                    
+                    n = str(o.get("name") or o.get("n") or "").strip().lower()
+                    v = str(o.get("odd") or o.get("o") or "")
+                    if "alt" in n or n == "1": markets["under25"] = v
+                    elif "üst" in n or "ust" in n or n == "2": markets["over25"] = v
+
             # 1.5 Alt / Üst
             elif "1.5" in m_name:
                 for o in o_list:
-                    n = str(o.get("n", "")).strip().lower()
-                    v = str(o.get("o", ""))
-                    if "alt" in n or n == "1" or n == "a":
-                        markets["under15"] = v
-                    elif "üst" in n or "ust" in n or n == "2" or n == "u":
-                        markets["over15"] = v
+                    n = str(o.get("name") or o.get("n") or "").strip().lower()
+                    v = str(o.get("odd") or o.get("o") or "")
+                    if "alt" in n or n == "1": markets["under15"] = v
+                    elif "üst" in n or "ust" in n or n == "2": markets["over15"] = v
 
             # 3.5 Alt / Üst
             elif "3.5" in m_name:
                 for o in o_list:
-                    n = str(o.get("n", "")).strip().lower()
-                    v = str(o.get("o", ""))
-                    if "alt" in n or n == "1" or n == "a":
-                        markets["under35"] = v
-                    elif "üst" in n or "ust" in n or n == "2" or n == "u":
-                        markets["over35"] = v
+                    n = str(o.get("name") or o.get("n") or "").strip().lower()
+                    v = str(o.get("odd") or o.get("o") or "")
+                    if "alt" in n or n == "1": markets["under35"] = v
+                    elif "üst" in n or "ust" in n or n == "2": markets["over35"] = v
 
-            # Karşılıklı Gol (1: Var, 2: Yok veya Var/Yok)
+            # Karşılıklı Gol (1: Var, 2: Yok)
             elif "karşılıklı" in m_name or "kg" in m_name:
                 for o in o_list:
-                    n = str(o.get("n", "")).strip().lower()
-                    v = str(o.get("o", ""))
-                    if "var" in n or n == "1" or n == "v":
-                        markets["bttsYes"] = v
-                    elif "yok" in n or n == "2" or n == "y":
-                        markets["bttsNo"] = v
+                    n = str(o.get("name") or o.get("n") or "").strip().lower()
+                    v = str(o.get("odd") or o.get("o") or "")
+                    if "var" in n or n == "1": markets["bttsYes"] = v
+                    elif "yok" in n or n == "2": markets["bttsNo"] = v
 
             # Çifte Şans
-            elif "çifte şans" in m_name or m_code == "2":
+            elif "çifte şans" in m_name:
                 for o in o_list:
-                    n = str(o.get("n", "")).strip().upper()
-                    v = str(o.get("o", ""))
+                    n = str(o.get("name") or o.get("n") or "").strip().upper()
+                    v = str(o.get("odd") or o.get("o") or "")
                     if "1-X" in n or "1X" in n: markets["cs1x"] = v
                     elif "1-2" in n or "12" in n: markets["cs12"] = v
                     elif "X-2" in n or "X2" in n: markets["csx2"] = v
 
             # İlk Yarı Sonucu
-            elif "ilk yarı sonucu" in m_name or m_code == "102":
+            elif "ilk yarı sonucu" in m_name:
                 for o in o_list:
-                    n = str(o.get("n", "")).strip().upper()
-                    v = str(o.get("o", ""))
+                    n = str(o.get("name") or o.get("n") or "").strip().upper()
+                    v = str(o.get("odd") or o.get("o") or "")
                     if n == "1": markets["ht1"] = v
                     elif n == "X": markets["htX"] = v
                     elif n == "2": markets["ht2"] = v
