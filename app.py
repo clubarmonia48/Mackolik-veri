@@ -9,15 +9,20 @@ _cache = {"time": 0, "matches": []}
 CACHE_SECONDS = 60
 
 def fetch_real_bulletin():
-    url = "https://bulletin.nesine.com/api/bulletin/getevents"
-    headers = {"User-Agent": UA, "Accept": "application/json"}
+    # Doğrudan çalışan Nesine Mobil API uç noktası
+    url = "https://m.nesine.com/api/bulletin/getevents"
+    headers = {
+        "User-Agent": UA,
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://m.nesine.com/"
+    }
     
-    r = requests.get(url, headers=headers, timeout=12)
+    r = requests.get(url, headers=headers, timeout=15)
     r.raise_for_status()
     data = r.json()
 
     matches = []
-    events = data.get("eventIdList", []) or data.get("events", []) or []
+    events = data.get("eventIdList", []) or data.get("events", []) or data.get("data", []) or []
     
     for ev in events:
         home = ev.get("homeTeamName") or ev.get("hn") or ""
@@ -44,7 +49,7 @@ def fetch_real_bulletin():
                     elif n in ["X", "0"]: markets["msx"] = v
                     elif n == "2": markets["ms2"] = v
                     
-            # 2.5 Alt / Üst (Nesine Sıralaması: 0 -> Üst, 1 -> Alt)
+            # 2.5 Alt / Üst (Doğru eşleşme: 0 -> Üst, 1 -> Alt)
             elif "2.5" in m_name:
                 for idx, o in enumerate(o_list):
                     n = str(o.get("name") or o.get("n") or "").lower()
@@ -74,7 +79,7 @@ def fetch_real_bulletin():
                     elif "üst" in n or "ust" in n or (not n and idx == 0):
                         markets["over35"] = v
 
-            # Karşılıklı Gol (0 -> Var, 1 -> Yok)
+            # Karşılıklı Gol
             elif "kg" in m_name or "karşılıklı" in m_name:
                 for idx, o in enumerate(o_list):
                     n = str(o.get("name") or o.get("n") or "").lower()
@@ -110,7 +115,7 @@ def matches():
             _cache["matches"] = fetch_real_bulletin()
             _cache["time"] = now
         data = _cache["matches"]
-        return jsonify(ok=True, matches=data, count=len(data), source="NesineAPI", time=datetime.now(timezone.utc).isoformat() + "Z")
+        return jsonify(ok=True, matches=data, count=len(data), source="NesineMobileAPI", time=datetime.now(timezone.utc).isoformat() + "Z")
     except Exception as e:
         return jsonify(ok=False, error=str(e)), 500
 
@@ -124,4 +129,3 @@ def match_details():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "10000")))
-    
